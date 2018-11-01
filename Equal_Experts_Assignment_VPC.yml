@@ -18,6 +18,18 @@ Parameters:
     Description: CIDR of private CIDR
     Type: String
     Default: 172.20.20.0/24
+  Ansible:
+    Type: String
+    Description: Instance for Ansible Master
+    Default: "Ansible-Master"
+  AMIImageId:
+    Type: String
+    Description: AMI Image to be used for instance.
+    Default: "ami-0ff8a91507f77f867"
+  KeyPair:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: "Key Pair for instance"
+    Default: "Offc-laptop.pem"
 
 Resources:
     myVPC: 
@@ -108,6 +120,76 @@ Resources:
         Properties:
             RouteTableId: !Ref PrivateRouteTable
             SubnetId: !Ref PrivateSubnet
+    InstanceSecurityGroupssh:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+            GroupDescription: Enable SSH access via port 22
+            SecurityGroupIngress:
+            - IpProtocol: tcp
+              FromPort: '22'
+              ToPort: '22'
+              CidrIp: 0.0.0.0/0
+            VpcId: !Ref myVPC
+    InstanceSecurityGroupjenkins:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+            GroupDescription: Enable Jenkins access via port 8080
+            SecurityGroupIngress:
+            - IpProtocol: tcp
+              FromPort: '8080'
+              ToPort: '8080'
+              CidrIp: 0.0.0.0/0
+            VpcId: !Ref myVPC
+
+    AnsibleMaster:
+        Type: AWS::EC2::Instance
+        Properties:
+          InstanceType: t2.medium
+          SecurityGroupIds:
+            - !Ref InstanceSecurityGroupjenkins
+            - !Ref InstanceSecurityGroupssh
+          KeyName: !Ref KeyPair
+          ImageId: !Ref AMIImageId
+          SubnetId: !Ref PublicSubnet
+          Tags:
+            - Key: "Name"
+              Value: "Master"
+
+
+          UserData:
+            Fn::Base64:
+                !Sub |
+                #!/bin/bash
+                yum update –y
+                wget -O /etc/yum.repos.d/jenkins.repo http://pkg.jenkins.io/redhat/jenkins.repo
+                rpm --import https://pkg.jenkins.io/redhat/jenkins.io.key
+                yum install jenkins -y
+                yum install java-1.8.0 java-1.8.0-openjdk-devel -y
+                yum remove java-1.7.0-openjdk -y 
+                pip install ansible
+                service jenkins start
+    AnsibleSlave:
+        Type: AWS::EC2::Instance
+        Properties:
+          InstanceType: t2.medium
+            
+          SecurityGroupIds:
+            - !Ref InstanceSecurityGroupssh
+          KeyName: !Ref KeyPair
+          ImageId: ami-0ff8a91507f77f867
+          SubnetId: !Ref PrivateSubnet
+          Tags:
+            - Key: "Name"
+              Value: "Slave"
+
+
+          UserData:
+            Fn::Base64:
+                !Sub |
+                #!/bin/bash
+                yum update –y
+                yum install java-1.8.0 java-1.8.0-openjdk-devel -y
+                yum remove java-1.7.0-openjdk -y 
 
 Outputs: 
 
